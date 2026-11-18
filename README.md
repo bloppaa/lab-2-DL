@@ -1,105 +1,67 @@
-# DL-2026-02-L02
+# Laboratorio 02 de Deep Learning
 
-Proyecto base del **Laboratorio 02 de Deep Learning** (segundo semestre 2026):
-redes con una **capa convolucional 1D** para predecir la etapa de deterioro
-cognitivo (escala GDS) a partir de 15 respuestas binarias de un test de
-orientacion.
+Clasificación multiclase y ordinal del deterioro cognitivo mediante redes convolucionales unidimensionales y CORAL.
 
-Es la continuacion del Laboratorio 01: se mantiene el dataset, los seis
-experimentos (`GDS`, `GDS_R1` ... `GDS_R5`), la validacion cruzada anidada y
-las metricas multiclase y ordinales. El cambio principal es la arquitectura:
-cada fila de 15 atributos se trata como una secuencia de largo 15 y se procesa
-con `nn.Conv1d` antes del MLP.
+**Autores:** Pablo Cortés y Kevin Silva  
+**Profesor:** Dr. Juan Bekios Calfa  
+**Universidad Católica del Norte**
 
-## Experimentos
+## Descripción
 
-| Algoritmo | Arquitectura | Perdida | Prediccion | Estado |
-|---|---|---|---|---|
-| `conv1d_softmax` | Conv1D + MLP + `Linear(K)` | `CrossEntropyLoss` | `argmax` | Implementado |
-| `conv1d_coral` | Conv1D + MLP + `CoralLayer(K-1)` | BCE sobre umbrales | conteo de umbrales | **TODO(alumno)** |
+El laboratorio evalúa tres configuraciones para predecir la etapa de deterioro cognitivo a partir de 15 respuestas binarias de un test de orientación. Cada registro se representa como una secuencia de un canal y 15 posiciones. Las tres configuraciones comparten un extractor Conv1D seguido de un MLP.
 
-Ambos comparten el mismo tronco (`Conv1DBackbone`). Solo cambia la cabeza y la
-estrategia de entrenamiento (`ClassificationTask`).
+| Configuración            | Cabeza de clasificación     | Función de pérdida                                                                 |
+| ------------------------ | --------------------------- | ---------------------------------------------------------------------------------- |
+| Conv1D + Softmax         | \(K\) logits, uno por clase | Entropía cruzada categórica                                                        |
+| Conv1D + CORAL           | \(K-1\) umbrales ordinales  | Entropía cruzada binaria acumulada por umbral                                      |
+| Conv1D + CORAL con pesos | \(K-1\) umbrales ordinales  | Pérdida CORAL ponderada por el número efectivo de muestras, con \(\beta = 0{,}99\) |
 
-## Que esta implementado
+Se evaluaron las tres configuraciones en seis objetivos (`GDS` y `GDS_R1` a `GDS_R5`), para un total de **18 experimentos** sobre 1119 registros.
 
-- Carga de datos `csv` / `sav` y recodificacion del objetivo a `0 .. K-1`.
-- `Dataset` que entrega cada fila como tensor `(1, 15)` para `nn.Conv1d`.
-- Bloques `Conv1DBlock` (Conv1d + BatchNorm1d + ReLU), extractor convolucional,
-  MLP y la red completa `Conv1DSoftmaxNet`.
-- Fabricas `ModelFactory` y `TaskFactory` para registrar algoritmos.
-- `Trainer` con Adam, `GridSearch` interna y `NestedCrossValidator` (5x3).
-- **Busqueda de hiperparametros en el loop interno**: recorre
-  `HYPERPARAMETER_GRID`, elige por menor MAE (empate: mayor QWK), reentrena en
-  todo el entrenamiento externo y evalua una sola vez en el test externo.
-- Metricas: accuracy, balanced accuracy, precision/recall/F1 macro, MAE, QWK,
-  accuracy ±1 y errores graves.
-- Reportes: CSV, Markdown, rankings, graficos de barras, matrices de confusion
-  y la configuracion elegida en cada fold (`seleccion_hp.csv`).
+## Instalación
 
-## Que queda como TODO (alumno)
-
-- `CoralLayer` y `Conv1DCoralNet` en `src/models/coral.py`.
-- `labels_to_levels`, `coral_loss`, `effective_number_weights` y
-  `logits_to_ordinal_predictions` en `src/tasks/ordinal_task.py`.
-- Comparar `conv1d_softmax` y `conv1d_coral` (con y sin pesos) en los seis
-  objetivos y completar el informe.
-
-Detalle en [docs/04_extension_ordinal.md](docs/04_extension_ordinal.md).
-
-## Inicio rapido
+Desde la raíz del repositorio, crea y activa el entorno Conda:
 
 ```bash
+conda env create -f environment.yml
 conda activate lab_pytorch
-cp "/ruta/al/archivo/15 atributos R0-R5.sav" dataset/
-
-# Un experimento rapido (sin grid) para verificar el entorno
-python main.py --data-path "dataset/15 atributos R0-R5.sav" --epochs 5 --no-grid
-
-# Experimento completo en GDS_R2 (grid interno + 5x3 folds)
-python main.py --data-path "dataset/15 atributos R0-R5.sav" --target-name GDS_R2
-
-# Los seis objetivos con tablas, rankings y graficos en results/
-python main.py --data-path "dataset/15 atributos R0-R5.sav" --all-targets
 ```
 
-## Estructura
+Copia el archivo `.sav` proporcionado en el laboratorio a `dataset/dataset.sav`. Si lo guardas con otro nombre, ajusta el argumento `--data-path` en los comandos.
 
-```text
-DL-2026-02-L02/
-|-- main.py                  # CLI: arma ExperimentConfig y llama a ExperimentRunner
-|-- src/
-|   |-- config.py            # constantes, dataclasses de configuracion y HYPERPARAMETER_GRID
-|   |-- utils.py             # semillas y dispositivo
-|   |-- experiment.py        # ExperimentRunner: algoritmos x objetivos
-|   |-- data/                # DataFrameLoader, TargetEncoder, StratifiedSplitter, Dataset (1, 15)
-|   |-- models/              # Conv1DBlock, Conv1DBackbone, Conv1DSoftmaxNet, CORAL (TODO), ModelFactory
-|   |-- tasks/               # ClassificationTask, SoftmaxTask, CoralTask (TODO), TaskFactory
-|   |-- training/            # Trainer, GridSearch, NestedCrossValidator
-|   |-- evaluation/          # MetricsCalculator
-|   `-- reporting/           # ReportWriter, rankings y graficos
-|-- docs/                    # documentacion por partes
-|-- dataset/                 # datos locales (no versionados)
-|-- results/                 # salidas de main.py (no versionadas)
-|-- environment.yml
-`-- README.md
+## Reproducir los experimentos
+
+Ejecuta los comandos desde la raíz del repositorio. Cada variante escribe sus resultados en un directorio distinto.
+
+```bash
+# Conv1D + Softmax
+python main.py --data-path dataset/dataset.sav --all-targets --algorithm conv1d_softmax --epochs 20 --device cpu --seed 42 --output-dir results/replica_softmax
+
+# Conv1D + CORAL
+python main.py --data-path dataset/dataset.sav --all-targets --algorithm conv1d_coral --epochs 20 --device cpu --seed 42 --output-dir results/replica_coral
+
+# Conv1D + CORAL con pesos
+python main.py --data-path dataset/dataset.sav --all-targets --algorithm conv1d_coral --use-weights --epochs 20 --device cpu --seed 42 --output-dir results/replica_coral_pesos
 ```
 
-## Documentacion
+Para `GDS_R1` a `GDS_R5` se utiliza validación cruzada anidada estratificada con cinco pliegues externos y tres internos. La búsqueda selecciona la configuración con menor MAE ordinal promedio y usa el mayor QWK para desempatar. Para `GDS` original se usan dos pliegues externos y la configuración base, ya que la clase terminal contiene solo dos registros y cada conjunto de entrenamiento externo queda con uno.
 
-1. [El problema](docs/01_problema.md): GDS, reagrupaciones, desbalance y por que
-   usar Conv1D sobre los 15 items.
-2. [Arquitectura](docs/02_arquitectura.md): convolucion 1D, trazado de formas,
-   clases y responsabilidades.
-3. [Uso](docs/03_uso.md): entorno, argumentos, ejemplos de comandos y salidas.
-4. [Extension ordinal](docs/04_extension_ordinal.md): esqueletos CORAL y orden
-   sugerido de implementacion.
+## Resultados
 
-## Plan sugerido para alumnos
+Las ejecuciones generan métricas en CSV y Markdown, matrices de confusión y registros de selección de hiperparámetros. Las métricas se resumen como media y desviación estándar de los pliegues externos. El CSV consolidado que respalda las tablas del informe se encuentra en `results/bateria_lab2/resultados_consolidados.csv` dentro del paquete de resultados.
 
-1. Leer [docs/01_problema.md](docs/01_problema.md) y revisar el dataset.
-2. Ejecutar `conv1d_softmax` en `GDS_R2` con `--no-grid` y luego con grid.
-3. Correr `--all-targets` y revisar `results/` (tablas, rankings, `seleccion_hp.csv`).
-4. Implementar los esqueletos CORAL (ver [docs/04_extension_ordinal.md](docs/04_extension_ordinal.md)).
-5. Ejecutar `--algorithm all` con y sin `--use-weights`.
-6. Completar el informe comparando Softmax y CORAL en los seis objetivos.
+En `GDS_R4`, CORAL con pesos obtuvo la mayor exactitud balanceada (0,6827), mientras que CORAL sin pesos obtuvo el mayor F1 macro (0,5984). En `GDS_R1`, Softmax obtuvo el mayor F1 macro (0,7493). En `GDS` original, CORAL con pesos aumentó la exactitud balanceada de 0,3458 a 0,4422 frente a Softmax, con un aumento de los errores graves de 3,75 % a 10,90 %.
+
+## Estructura del repositorio
+
+| Ruta              | Contenido                                                                 |
+| ----------------- | ------------------------------------------------------------------------- |
+| `main.py`         | Interfaz de línea de comandos para ejecutar los experimentos              |
+| `src/config.py`   | Configuración y espacio de búsqueda de hiperparámetros                    |
+| `src/data/`       | Carga de datos, codificación de etiquetas y preparación de las secuencias |
+| `src/models/`     | Bloques convolucionales, extractor compartido y cabezas Softmax y CORAL   |
+| `src/tasks/`      | Funciones de pérdida, ponderación y predicción                            |
+| `src/training/`   | Entrenamiento, búsqueda interna y validación cruzada                      |
+| `src/evaluation/` | Métricas multiclase y ordinales                                           |
+| `src/reporting/`  | Tablas, gráficos y matrices de confusión                                  |
+| `environment.yml` | Definición del entorno Conda                                              |
